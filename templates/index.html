@@ -88,49 +88,24 @@
                 // Clear the flag
                 sessionStorage.removeItem('justRefreshed');
                 
-                // Disable all form elements
-                const form = document.getElementById('urlForm');
-                const inputs = form.querySelectorAll('input, button');
-                inputs.forEach(input => input.disabled = true);
+                // Only disable the submit button
+                const submitBtn = document.getElementById('submitBtn');
+                submitBtn.disabled = true;
                 
-                // Create overlay with 3-second countdown
-                const overlay = document.createElement('div');
-                overlay.style.position = 'fixed';
-                overlay.style.top = '0';
-                overlay.style.left = '0';
-                overlay.style.width = '100%';
-                overlay.style.height = '100%';
-                overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-                overlay.style.display = 'flex';
-                overlay.style.justifyContent = 'center';
-                overlay.style.alignItems = 'center';
-                overlay.style.zIndex = '1000';
-                overlay.id = 'postRefreshOverlay';
-                
+                // Add counter to the button
                 let secondsLeft = 5;
-                overlay.innerHTML = `
-                    <div class="text-center text-white">
-                        <h3>Page Refreshed!</h3>
-                        <p>You can continue in ${secondsLeft} seconds</p>
-                    </div>
-                `;
-                
-                document.body.appendChild(overlay);
+                const originalText = submitBtn.innerHTML;
+                submitBtn.innerHTML = `Process URL (${secondsLeft})`;
                 
                 // Update countdown
                 const countdownInterval = setInterval(() => {
                     secondsLeft--;
                     if (secondsLeft <= 0) {
                         clearInterval(countdownInterval);
-                        document.body.removeChild(overlay);
-                        inputs.forEach(input => input.disabled = false);
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = originalText;
                     } else {
-                        overlay.innerHTML = `
-                            <div class="text-center text-white">
-                                <h3>Page Refreshed!</h3>
-                                <p>You can continue in ${secondsLeft} seconds</p>
-                            </div>
-                        `;
+                        submitBtn.innerHTML = `Process URL (${secondsLeft})`;
                     }
                 }, 1000);
             }
@@ -268,50 +243,37 @@
             // Set refreshing state
             isRefreshing = true;
             
-            // Disable all inputs and show countdown
-            const form = document.getElementById('urlForm');
-            const resultDiv = document.getElementById('result');
-            const inputs = form.querySelectorAll('input, button');
+            // Only disable the submit button
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
             
-            inputs.forEach(input => input.disabled = true);
+            // Create a small notification instead of full overlay
+            const notification = document.createElement('div');
+            notification.style.position = 'fixed';
+            notification.style.top = '20px';
+            notification.style.left = '50%';
+            notification.style.transform = 'translateX(-50%)';
+            notification.style.backgroundColor = '#ffc107';
+            notification.style.color = '#000';
+            notification.style.padding = '10px 20px';
+            notification.style.borderRadius = '5px';
+            notification.style.zIndex = '1000';
             
-            // Create countdown overlay
-            const overlay = document.createElement('div');
-            overlay.style.position = 'fixed';
-            overlay.style.top = '0';
-            overlay.style.left = '0';
-            overlay.style.width = '100%';
-            overlay.style.height = '100%';
-            overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-            overlay.style.display = 'flex';
-            overlay.style.justifyContent = 'center';
-            overlay.style.alignItems = 'center';
-            overlay.style.zIndex = '1000';
-            
-            // Changed from 5 to 4 seconds
+            // Changed to 2 seconds countdown
             let secondsLeft = 2;
-            overlay.innerHTML = `
-                <div class="text-center text-white">
-                    <h3>Refreshing session...</h3>
-                    <p>Please wait ${secondsLeft} seconds</p>
-                </div>
-            `;
+            notification.innerHTML = `Refreshing session... (${secondsLeft})`;
             
-            document.body.appendChild(overlay);
+            document.body.appendChild(notification);
             
             // Update countdown every second
             const countdownInterval = setInterval(() => {
                 secondsLeft--;
                 if (secondsLeft <= 0) {
                     clearInterval(countdownInterval);
+                    document.body.removeChild(notification);
                     performRefresh();
                 } else {
-                    overlay.innerHTML = `
-                        <div class="text-center text-white">
-                            <h3>Refreshing session...</h3>
-                            <p>Please wait ${secondsLeft} seconds</p>
-                        </div>
-                    `;
+                    notification.innerHTML = `Refreshing session... (${secondsLeft})`;
                 }
             }, 1000);
             
