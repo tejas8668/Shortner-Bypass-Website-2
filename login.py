@@ -11,7 +11,7 @@ memory_tokens = {}
 # Try to connect to MongoDB, use memory storage if it fails
 try:
     # MongoDB connection - using environment variable for security
-    MONGO_URI = os.environ.get('MONGO_URI', "mongodb+srv://tejaschavan1110:sQbJc2WGV7nFaANX@cluster0.kepqz.mongodb.net/?retryWrites=true&w=majority")
+    MONGO_URI = os.environ.get('MONGO_URI', "MONGO_URI")
     client = MongoClient(MONGO_URI)
     db = client['terabox_bot']
     users_collection = db['users']
