@@ -79,9 +79,16 @@
     <script>
         let currentSessionId = null;
         let retryCount = 0;
+        let isRefreshing = false;
 
         document.getElementById('urlForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            // Don't allow form submission during refresh cooldown
+            if (isRefreshing) {
+                return;
+            }
+            
             const submitBtn = document.getElementById('submitBtn');
             const resultDiv = document.getElementById('result');
             const url = document.getElementById('url').value;
@@ -108,19 +115,23 @@
                 resultDiv.style.display = 'block';
                 if (data.status === 'cloudflare') {
                     resultDiv.className = 'error';
+                    // Update retry count from server response
                     retryCount = data.retry_count || 0;
                     
-                    let buttonsHtml = `
-                        <div class="text-center">
-                            <button onclick="retryProcess()" class="btn btn-primary mt-2">Try Again</button>
-                        </div>
-                    `;
+                    let buttonsHtml = '';
                     
-                    if (retryCount >= 3) {
+                    // Max retry attempts is 4
+                    if (retryCount >= 4) {
+                        // Only show refresh button after 4 attempts
+                        buttonsHtml = `
+                            <div class="text-center">
+                                <button onclick="refreshPage()" class="btn btn-warning mt-2">Refresh Page</button>
+                            </div>
+                        `;
+                    } else {
                         buttonsHtml = `
                             <div class="text-center">
                                 <button onclick="retryProcess()" class="btn btn-primary mt-2">Try Again</button>
-                                <button onclick="refreshPage()" class="btn btn-warning mt-2 ms-2">Refresh Page</button>
                             </div>
                         `;
                     }
@@ -146,19 +157,23 @@
                     retryCount = 0;
                 } else if (data.status === 'error') {
                     resultDiv.className = 'error';
+                    // Update retry count from server response
                     retryCount = data.retry_count || 0;
                     
-                    let buttonsHtml = `
-                        <div class="text-center">
-                            <button onclick="retryProcess()" class="btn btn-primary mt-2">Try Again</button>
-                        </div>
-                    `;
+                    let buttonsHtml = '';
                     
-                    if (retryCount >= 3) {
+                    // Max retry attempts is 4
+                    if (retryCount >= 4) {
+                        // Only show refresh button after 4 attempts
+                        buttonsHtml = `
+                            <div class="text-center">
+                                <button onclick="refreshPage()" class="btn btn-warning mt-2">Refresh Page</button>
+                            </div>
+                        `;
+                    } else {
                         buttonsHtml = `
                             <div class="text-center">
                                 <button onclick="retryProcess()" class="btn btn-primary mt-2">Try Again</button>
-                                <button onclick="refreshPage()" class="btn btn-warning mt-2 ms-2">Refresh Page</button>
                             </div>
                         `;
                     }
@@ -195,18 +210,72 @@
         }
 
         function refreshPage() {
-            if (currentSessionId) {
-                const formData = new FormData();
-                formData.append('session_id', currentSessionId);
-                
-                fetch('/reset_session', {
-                    method: 'POST',
-                    body: formData
-                }).finally(() => {
+            // Set refreshing state
+            isRefreshing = true;
+            
+            // Disable all inputs and show countdown
+            const form = document.getElementById('urlForm');
+            const resultDiv = document.getElementById('result');
+            const inputs = form.querySelectorAll('input, button');
+            
+            inputs.forEach(input => input.disabled = true);
+            
+            // Create countdown overlay
+            const overlay = document.createElement('div');
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+            overlay.style.display = 'flex';
+            overlay.style.justifyContent = 'center';
+            overlay.style.alignItems = 'center';
+            overlay.style.zIndex = '1000';
+            
+            let secondsLeft = 5;
+            overlay.innerHTML = `
+                <div class="text-center text-white">
+                    <h3>Refreshing session...</h3>
+                    <p>Please wait ${secondsLeft} seconds</p>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+            
+            // Update countdown every second
+            const countdownInterval = setInterval(() => {
+                secondsLeft--;
+                if (secondsLeft <= 0) {
+                    clearInterval(countdownInterval);
+                    performRefresh();
+                } else {
+                    overlay.innerHTML = `
+                        <div class="text-center text-white">
+                            <h3>Refreshing session...</h3>
+                            <p>Please wait ${secondsLeft} seconds</p>
+                        </div>
+                    `;
+                }
+            }, 1000);
+            
+            function performRefresh() {
+                // If we have a session ID, terminate it first
+                if (currentSessionId) {
+                    const formData = new FormData();
+                    formData.append('session_id', currentSessionId);
+                    
+                    fetch('/reset_session', {
+                        method: 'POST',
+                        body: formData
+                    }).finally(() => {
+                        // Reload the page after delay
+                        window.location.reload();
+                    });
+                } else {
+                    // Just reload if no session
                     window.location.reload();
-                });
-            } else {
-                window.location.reload();
+                }
             }
         }
 

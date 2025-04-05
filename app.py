@@ -20,6 +20,8 @@ session_times = {}  # To track when each session was created
 
 # Maximum session age in seconds (12 hours)
 MAX_SESSION_AGE = 12 * 60 * 60
+# Maximum retry attempts
+MAX_RETRY_ATTEMPTS = 4
 
 '''def Seturl_in(url, retry=False):
     client = cloudscraper.create_scraper(allow_brotli=False)
@@ -50,6 +52,15 @@ def Seturl_in(url, retry=False, session_id=None):
     # Get or create session
     if retry and session_id and session_id in active_sessions:
         client = active_sessions[session_id]
+        
+        # Check if max retries exceeded
+        if retry_attempts.get(session_id, 0) >= MAX_RETRY_ATTEMPTS:
+            return {
+                "status": "error",
+                "message": "Maximum retry attempts exceeded. Please refresh the page.",
+                "session_id": session_id,
+                "retry_count": retry_attempts.get(session_id, 0)
+            }
     else:
         client = cloudscraper.create_scraper(allow_brotli=False)
         if session_id:
@@ -110,6 +121,15 @@ def runurl(url, retry=False, session_id=None):
     # Get or create session
     if retry and session_id and session_id in active_sessions:
         client = active_sessions[session_id]
+        
+        # Check if max retries exceeded
+        if retry_attempts.get(session_id, 0) >= MAX_RETRY_ATTEMPTS:
+            return {
+                "status": "error",
+                "message": "Maximum retry attempts exceeded. Please refresh the page.",
+                "session_id": session_id,
+                "retry_count": retry_attempts.get(session_id, 0)
+            }
     else:
         client = cloudscraper.create_scraper(allow_brotli=False)
         if session_id:
