@@ -1,356 +1,279 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>URL Processor</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body {
-            background-color: #f8f9fa;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .container {
-            max-width: 600px;
-            padding: 20px;
-        }
-        .card {
-            border-radius: 15px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        .card-header {
-            background-color: #007bff;
-            color: white;
-            border-radius: 15px 15px 0 0 !important;
-            padding: 15px;
-        }
-        .form-control {
-            border-radius: 10px;
-            padding: 12px;
-        }
-        .btn {
-            border-radius: 10px;
-            padding: 12px 25px;
-        }
-        #result {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 10px;
-            display: none;
-        }
-        .success {
-            background-color: #d4edda;
-            border: 1px solid #c3e6cb;
-        }
-        .error {
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="card">
-            <div class="card-header text-center">
-                <h3 class="mb-0">URL Processor</h3>
-                <div class="text-end position-absolute top-0 end-0 p-2">
-                    <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm">Logout</a>
-                </div>
-            </div>
-            <div class="card-body">
-                <form id="urlForm">
-                    <div class="mb-3">
-                        <label for="url" class="form-label">Enter URL</label>
-                        <input type="url" class="form-control" id="url" name="url" required placeholder="https://runurl.in/xxxx or https://seturl.in/xxxx">
-                        <div class="form-text text-muted">Supported domains: runurl.in and seturl.in</div>
-                    </div>
-                    <div class="text-center">
-                        <button type="submit" class="btn btn-primary" id="submitBtn">Process URL</button>
-                    </div>
-                </form>
-                <div id="result"></div>
-            </div>
-        </div>
-    </div>
+from flask import Flask, render_template, request, jsonify, session
+import cloudscraper
+from bs4 import BeautifulSoup
+import time
+import os
+import datetime
+import threading
+from login import token_required, init_login_routes
 
-    <script>
-        let currentSessionId = null;
-        let retryCount = 0;
-        let isRefreshing = false;
-        let pageJustLoaded = true;
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))  # For session management
 
-        // Add post-refresh delay on page load
-        window.addEventListener('load', function() {
-            if (sessionStorage.getItem('justRefreshed') === 'true') {
-                // Clear the flag
-                sessionStorage.removeItem('justRefreshed');
-                
-                // Disable all form elements
-                const form = document.getElementById('urlForm');
-                const inputs = form.querySelectorAll('input, button');
-                inputs.forEach(input => input.disabled = true);
-                
-                // Create overlay with 3-second countdown
-                const overlay = document.createElement('div');
-                overlay.style.position = 'fixed';
-                overlay.style.top = '0';
-                overlay.style.left = '0';
-                overlay.style.width = '100%';
-                overlay.style.height = '100%';
-                overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-                overlay.style.display = 'flex';
-                overlay.style.justifyContent = 'center';
-                overlay.style.alignItems = 'center';
-                overlay.style.zIndex = '1000';
-                overlay.id = 'postRefreshOverlay';
-                
-                let secondsLeft = 5;
-                overlay.innerHTML = `
-                    <div class="text-center text-white">
-                        <h3>Page Refreshed!</h3>
-                        <p>You can continue in ${secondsLeft} seconds</p>
-                    </div>
-                `;
-                
-                document.body.appendChild(overlay);
-                
-                // Update countdown
-                const countdownInterval = setInterval(() => {
-                    secondsLeft--;
-                    if (secondsLeft <= 0) {
-                        clearInterval(countdownInterval);
-                        document.body.removeChild(overlay);
-                        inputs.forEach(input => input.disabled = false);
-                    } else {
-                        overlay.innerHTML = `
-                            <div class="text-center text-white">
-                                <h3>Page Refreshed!</h3>
-                                <p>You can continue in ${secondsLeft} seconds</p>
-                            </div>
-                        `;
-                    }
-                }, 1000);
+# Initialize login routes
+init_login_routes(app)
+
+# Store active sessions, retry attempts, and session creation times
+active_sessions = {}
+retry_attempts = {}
+session_times = {}  # To track when each session was created
+
+# Maximum session age in seconds (12 hours)
+MAX_SESSION_AGE = 12 * 60 * 60
+# Maximum retry attempts
+MAX_RETRY_ATTEMPTS = 3
+
+'''def Seturl_in(url, retry=False):
+    client = cloudscraper.create_scraper(allow_brotli=False)
+    DOMAIN = "https://set.seturl.in/"
+    url = url[:-1] if url[-1] == "/" else url
+    code = url.split("/")[-1]
+    final_url = f"{DOMAIN}/{code}"
+    ref = "https://loan.creditsgoal.com/"
+    h = {"referer": ref}
+    
+    try:
+        resp = client.get(final_url, headers=h)
+        soup = BeautifulSoup(resp.content, "html.parser")
+        inputs = soup.find_all("input")
+        data = {input.get("name"): input.get("value") for input in inputs}
+        h = {"x-requested-with": "XMLHttpRequest"}
+        time.sleep(7)
+        r = client.post(f"{DOMAIN}/links/go", data=data, headers=h)
+        return str(r.json()["url"])
+    except BaseException as e:
+        if not retry:
+            print(f"Error occurred: {e}. Retrying...")
+            return Seturl_in(url, retry=True)
+        else:
+            return "Something went wrong, Please Wait For Few Seconds and try again..."'''
+        
+def Seturl_in(url, retry=False, session_id=None):
+    # Get or create session
+    if retry and session_id and session_id in active_sessions:
+        client = active_sessions[session_id]
+        
+        # Check if max retries exceeded
+        if retry_attempts.get(session_id, 0) >= MAX_RETRY_ATTEMPTS:
+            return {
+                "status": "error",
+                "message": "Maximum retry attempts exceeded. Please refresh the page.",
+                "session_id": session_id,
+                "retry_count": retry_attempts.get(session_id, 0)
             }
-        });
+    else:
+        client = cloudscraper.create_scraper(allow_brotli=False)
+        if session_id:
+            active_sessions[session_id] = client
+            retry_attempts[session_id] = 0
+            session_times[session_id] = time.time()  # Record session creation time
 
-        document.getElementById('urlForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            // Don't allow form submission during refresh cooldown
-            if (isRefreshing) {
-                return;
-            }
-            
-            const submitBtn = document.getElementById('submitBtn');
-            const resultDiv = document.getElementById('result');
-            const url = document.getElementById('url').value;
-
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
-            resultDiv.style.display = 'none';
-
-            try {
-                const formData = new FormData();
-                formData.append('url', url);
-                if (currentSessionId) {
-                    formData.append('retry', 'true');
-                    formData.append('session_id', currentSessionId);
-                }
-
-                const response = await fetch('/process_url', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const data = await response.json();
+    DOMAIN = "https://set.seturl.in/"
+    url = url[:-1] if url[-1] == "/" else url
+    code = url.split("/")[-1]
+    final_url = f"{DOMAIN}/{code}"
+    ref = "https://loan.creditsgoal.com/"
+    h = {"referer": ref}
+    
+    try:
+        # Try to get the page
+        resp = client.get(final_url, headers=h)
+        
+        # Check if we got Cloudflare challenge
+        if "Just a moment" in resp.text or "Enable JavaScript" in resp.text:
+            # Increment retry count if this is a retry
+            if retry and session_id in retry_attempts:
+                retry_attempts[session_id] += 1
                 
-                resultDiv.style.display = 'block';
-                if (data.status === 'cloudflare') {
-                    resultDiv.className = 'error';
-                    // Update retry count from server response
-                    retryCount = data.retry_count || 0;
-                    
-                    let buttonsHtml = '';
-                    
-                    // Max retry attempts is 3 (since we changed it in app.py)
-                    if (retryCount >= 3) {
-                        // Only show refresh button after 3 attempts
-                        buttonsHtml = `
-                            <div class="text-center">
-                                <button onclick="refreshPage()" class="btn btn-warning mt-2">Refresh Page</button>
-                            </div>
-                        `;
-                    } else {
-                        buttonsHtml = `
-                            <div class="text-center">
-                                <button onclick="retryProcess()" class="btn btn-primary mt-2">Try Again</button>
-                            </div>
-                        `;
-                    }
-                    
-                    resultDiv.innerHTML = `
-                        <div class="alert alert-danger">${data.message}</div>
-                        ${buttonsHtml}
-                    `;
-                    currentSessionId = data.session_id;
-                } else if (data.status === 'success') {
-                    resultDiv.className = 'success';
-                    resultDiv.innerHTML = `
-                        <h5>Processed URL:</h5>
-                        <div class="input-group mb-3 mt-2">
-                            <input type="text" class="form-control" value="${data.url}" id="resultUrl" readonly>
-                            <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard()">Copy</button>
-                        </div>
-                        <div class="text-center">
-                            <a href="${data.url}" target="_blank" class="btn btn-success">Open Link</a>
-                        </div>
-                    `;
-                    currentSessionId = null;
-                    retryCount = 0;
-                } else if (data.status === 'error') {
-                    resultDiv.className = 'error';
-                    // Update retry count from server response
-                    retryCount = data.retry_count || 0;
-                    
-                    let buttonsHtml = '';
-                    
-                    // Max retry attempts is 3 (since we changed it in app.py)
-                    if (retryCount >= 3) {
-                        // Only show refresh button after 3 attempts
-                        buttonsHtml = `
-                            <div class="text-center">
-                                <button onclick="refreshPage()" class="btn btn-warning mt-2">Refresh Page</button>
-                            </div>
-                        `;
-                    } else {
-                        buttonsHtml = `
-                            <div class="text-center">
-                                <button onclick="retryProcess()" class="btn btn-primary mt-2">Try Again</button>
-                            </div>
-                        `;
-                    }
-                    
-                    resultDiv.innerHTML = `
-                        <div class="alert alert-danger">${data.message}</div>
-                        ${buttonsHtml}
-                    `;
-                    currentSessionId = data.session_id;
-                }
-            } catch (error) {
-                resultDiv.style.display = 'block';
-                resultDiv.className = 'error';
-                resultDiv.innerHTML = `
-                    <div class="alert alert-danger">An error occurred. Please try again.</div>
-                    <div class="text-center">
-                        <button onclick="retryProcess()" class="btn btn-primary mt-2">Try Again</button>
-                    </div>
-                `;
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = 'Process URL';
+            return {
+                "status": "cloudflare",
+                "message": "Cloudflare detected. Please try again.",
+                "session_id": session_id,
+                "retry_count": retry_attempts.get(session_id, 0)
             }
-        });
-
-        function retryProcess() {
-            if (currentSessionId) {
-                document.getElementById('urlForm').dispatchEvent(new Event('submit'));
-            } else {
-                currentSessionId = null;
-                retryCount = 0;
-                document.getElementById('urlForm').dispatchEvent(new Event('submit'));
-            }
+        
+        # If we got past Cloudflare, process the response
+        soup = BeautifulSoup(resp.content, "html.parser")
+        inputs = soup.find_all("input")
+        data = {input.get("name"): input.get("value") for input in inputs}
+        h = {"x-requested-with": "XMLHttpRequest"}
+        time.sleep(7)
+        r = client.post(f"{DOMAIN}/links/go", data=data, headers=h)
+        return {
+            "status": "success",
+            "url": str(r.json()["url"])
+        }
+        
+    except BaseException as e:
+        # Increment retry count if this is a retry
+        if retry and session_id in retry_attempts:
+            retry_attempts[session_id] += 1
+            
+        return {
+            "status": "error",
+            "message": str(e),
+            "session_id": session_id,
+            "retry_count": retry_attempts.get(session_id, 0)
         }
 
-        function refreshPage() {
-            // Set refreshing state
-            isRefreshing = true;
-            
-            // Disable all inputs and show countdown
-            const form = document.getElementById('urlForm');
-            const resultDiv = document.getElementById('result');
-            const inputs = form.querySelectorAll('input, button');
-            
-            inputs.forEach(input => input.disabled = true);
-            
-            // Create countdown overlay
-            const overlay = document.createElement('div');
-            overlay.style.position = 'fixed';
-            overlay.style.top = '0';
-            overlay.style.left = '0';
-            overlay.style.width = '100%';
-            overlay.style.height = '100%';
-            overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-            overlay.style.display = 'flex';
-            overlay.style.justifyContent = 'center';
-            overlay.style.alignItems = 'center';
-            overlay.style.zIndex = '1000';
-            
-            // Changed from 5 to 4 seconds
-            let secondsLeft = 2;
-            overlay.innerHTML = `
-                <div class="text-center text-white">
-                    <h3>Refreshing session...</h3>
-                    <p>Please wait ${secondsLeft} seconds</p>
-                </div>
-            `;
-            
-            document.body.appendChild(overlay);
-            
-            // Update countdown every second
-            const countdownInterval = setInterval(() => {
-                secondsLeft--;
-                if (secondsLeft <= 0) {
-                    clearInterval(countdownInterval);
-                    performRefresh();
-                } else {
-                    overlay.innerHTML = `
-                        <div class="text-center text-white">
-                            <h3>Refreshing session...</h3>
-                            <p>Please wait ${secondsLeft} seconds</p>
-                        </div>
-                    `;
-                }
-            }, 1000);
-            
-            function performRefresh() {
-                // Set a flag in sessionStorage to indicate page is refreshing
-                sessionStorage.setItem('justRefreshed', 'true');
+
+def runurl(url, retry=False, session_id=None):
+    # Get or create session
+    if retry and session_id and session_id in active_sessions:
+        client = active_sessions[session_id]
+        
+        # Check if max retries exceeded
+        if retry_attempts.get(session_id, 0) >= MAX_RETRY_ATTEMPTS:
+            return {
+                "status": "error",
+                "message": "Maximum retry attempts exceeded. Please refresh the page.",
+                "session_id": session_id,
+                "retry_count": retry_attempts.get(session_id, 0)
+            }
+    else:
+        client = cloudscraper.create_scraper(allow_brotli=False)
+        if session_id:
+            active_sessions[session_id] = client
+            retry_attempts[session_id] = 0
+            session_times[session_id] = time.time()  # Record session creation time
+
+    DOMAIN = "https://get.runurl.in/"
+    url = url[:-1] if url[-1] == "/" else url
+    code = url.split("/")[-1]
+    final_url = f"{DOMAIN}/{code}"
+    ref = "https://learna1.bgmi32bitapk.in/"
+    h = {"referer": ref}
+    
+    try:
+        # Try to get the page
+        resp = client.get(final_url, headers=h)
+        
+        # Check if we got Cloudflare challenge
+        if "Just a moment" in resp.text or "Enable JavaScript" in resp.text:
+            # Increment retry count if this is a retry
+            if retry and session_id in retry_attempts:
+                retry_attempts[session_id] += 1
                 
-                // If we have a session ID, terminate it first
-                if (currentSessionId) {
-                    const formData = new FormData();
-                    formData.append('session_id', currentSessionId);
-                    
-                    fetch('/reset_session', {
-                        method: 'POST',
-                        body: formData
-                    }).finally(() => {
-                        // Reload the page after delay
-                        window.location.reload();
-                    });
-                } else {
-                    // Just reload if no session
-                    window.location.reload();
-                }
+            return {
+                "status": "cloudflare",
+                "message": "Cloudflare detected. Please try again.",
+                "session_id": session_id,
+                "retry_count": retry_attempts.get(session_id, 0)
             }
+        
+        # If we got past Cloudflare, process the response
+        soup = BeautifulSoup(resp.content, "html.parser")
+        inputs = soup.find_all("input")
+        data = {input.get("name"): input.get("value") for input in inputs}
+        h = {"x-requested-with": "XMLHttpRequest"}
+        time.sleep(7)
+        r = client.post(f"{DOMAIN}/links/go", data=data, headers=h)
+        return {
+            "status": "success",
+            "url": str(r.json()["url"])
+        }
+        
+    except BaseException as e:
+        # Increment retry count if this is a retry
+        if retry and session_id in retry_attempts:
+            retry_attempts[session_id] += 1
+            
+        return {
+            "status": "error",
+            "message": str(e),
+            "session_id": session_id,
+            "retry_count": retry_attempts.get(session_id, 0)
         }
 
-        function copyToClipboard() {
-            const resultUrl = document.getElementById('resultUrl');
-            resultUrl.select();
-            resultUrl.setSelectionRange(0, 99999);
-            document.execCommand('copy');
-            
-            const copyBtn = document.querySelector('.input-group button');
-            const originalText = copyBtn.innerHTML;
-            copyBtn.innerHTML = 'Copied!';
-            setTimeout(() => {
-                copyBtn.innerHTML = originalText;
-            }, 2000);
-        }
-    </script>
-</body>
-</html> 
+@app.route('/')
+@token_required
+def home():
+    return render_template('index.html')
+
+@app.route('/process_url', methods=['POST'])
+@token_required
+def process_url():
+    # Clean up old sessions before processing new requests
+    cleanup_old_sessions()
+    
+    url = request.form.get('url')
+    retry = request.form.get('retry', 'false').lower() == 'true'
+    session_id = request.form.get('session_id')
+    
+    if not url:
+        return jsonify({'error': 'Please provide a URL'})
+    
+    # Generate a new session ID if not provided
+    if not session_id:
+        session_id = os.urandom(16).hex()
+    
+    # Check which domain the URL belongs to
+    if "runurl.in" in url:
+        result = runurl(url, retry, session_id)
+    elif "seturl.in" in url or "Seturl.in" in url:  
+        result = Seturl_in(url, retry, session_id)
+    else:
+        return jsonify({'status': 'error', 'message': 'Unsupported URL. Only runurl.in and seturl.in are supported.'})
+    
+    # If no session ID in result, add it
+    if result.get('status') in ['cloudflare', 'error'] and 'session_id' not in result:
+        result['session_id'] = session_id
+        
+    # Add retry count if not already present
+    if 'retry_count' not in result:
+        result['retry_count'] = retry_attempts.get(session_id, 0)
+    
+    return jsonify(result)
+
+@app.route('/reset_session', methods=['POST'])
+@token_required
+def reset_session():
+    session_id = request.form.get('session_id')
+    
+    # Clean up the session
+    cleanup_session(session_id)
+        
+    return jsonify({'status': 'success', 'message': 'Session reset successfully'})
+
+# Cleanup function for a specific session
+def cleanup_session(session_id):
+    if session_id in active_sessions:
+        del active_sessions[session_id]
+    
+    if session_id in retry_attempts:
+        del retry_attempts[session_id]
+        
+    if session_id in session_times:
+        del session_times[session_id]
+
+# Cleanup function for old sessions
+def cleanup_old_sessions():
+    current_time = time.time()
+    sessions_to_remove = []
+    
+    # Find old sessions
+    for session_id, creation_time in session_times.items():
+        if current_time - creation_time > MAX_SESSION_AGE:
+            sessions_to_remove.append(session_id)
+    
+    # Remove old sessions
+    for session_id in sessions_to_remove:
+        cleanup_session(session_id)
+    
+    if sessions_to_remove:
+        print(f"Cleaned up {len(sessions_to_remove)} old sessions")
+
+# Function to periodically clean up old sessions
+def schedule_cleanup():
+    while True:
+        # Sleep for 1 hour
+        time.sleep(3600)
+        cleanup_old_sessions()
+
+if __name__ == '__main__':
+    # Start the cleanup thread
+    cleanup_thread = threading.Thread(target=schedule_cleanup, daemon=True)
+    cleanup_thread.start()
+    
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port) 
