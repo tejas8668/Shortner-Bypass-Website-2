@@ -21,7 +21,7 @@ session_times = {}  # To track when each session was created
 # Maximum session age in seconds (12 hours)
 MAX_SESSION_AGE = 12 * 60 * 60
 # Maximum retry attempts
-MAX_RETRY_ATTEMPTS = 4
+MAX_RETRY_ATTEMPTS = 3
 
 '''def Seturl_in(url, retry=False):
     client = cloudscraper.create_scraper(allow_brotli=False)
@@ -210,7 +210,7 @@ def process_url():
     # Check which domain the URL belongs to
     if "runurl.in" in url:
         result = runurl(url, retry, session_id)
-    elif "seturl.in" in url:
+    elif "seturl.in" in url or "Seturl.in" in url:  
         result = Seturl_in(url, retry, session_id)
     else:
         return jsonify({'status': 'error', 'message': 'Unsupported URL. Only runurl.in and seturl.in are supported.'})

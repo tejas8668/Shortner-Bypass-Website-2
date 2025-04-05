@@ -80,6 +80,61 @@
         let currentSessionId = null;
         let retryCount = 0;
         let isRefreshing = false;
+        let pageJustLoaded = true;
+
+        // Add post-refresh delay on page load
+        window.addEventListener('load', function() {
+            if (sessionStorage.getItem('justRefreshed') === 'true') {
+                // Clear the flag
+                sessionStorage.removeItem('justRefreshed');
+                
+                // Disable all form elements
+                const form = document.getElementById('urlForm');
+                const inputs = form.querySelectorAll('input, button');
+                inputs.forEach(input => input.disabled = true);
+                
+                // Create overlay with 3-second countdown
+                const overlay = document.createElement('div');
+                overlay.style.position = 'fixed';
+                overlay.style.top = '0';
+                overlay.style.left = '0';
+                overlay.style.width = '100%';
+                overlay.style.height = '100%';
+                overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                overlay.style.display = 'flex';
+                overlay.style.justifyContent = 'center';
+                overlay.style.alignItems = 'center';
+                overlay.style.zIndex = '1000';
+                overlay.id = 'postRefreshOverlay';
+                
+                let secondsLeft = 3;
+                overlay.innerHTML = `
+                    <div class="text-center text-white">
+                        <h3>Page Refreshed!</h3>
+                        <p>You can continue in ${secondsLeft} seconds</p>
+                    </div>
+                `;
+                
+                document.body.appendChild(overlay);
+                
+                // Update countdown
+                const countdownInterval = setInterval(() => {
+                    secondsLeft--;
+                    if (secondsLeft <= 0) {
+                        clearInterval(countdownInterval);
+                        document.body.removeChild(overlay);
+                        inputs.forEach(input => input.disabled = false);
+                    } else {
+                        overlay.innerHTML = `
+                            <div class="text-center text-white">
+                                <h3>Page Refreshed!</h3>
+                                <p>You can continue in ${secondsLeft} seconds</p>
+                            </div>
+                        `;
+                    }
+                }, 1000);
+            }
+        });
 
         document.getElementById('urlForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -120,9 +175,9 @@
                     
                     let buttonsHtml = '';
                     
-                    // Max retry attempts is 4
-                    if (retryCount >= 4) {
-                        // Only show refresh button after 4 attempts
+                    // Max retry attempts is 3 (since we changed it in app.py)
+                    if (retryCount >= 3) {
+                        // Only show refresh button after 3 attempts
                         buttonsHtml = `
                             <div class="text-center">
                                 <button onclick="refreshPage()" class="btn btn-warning mt-2">Refresh Page</button>
@@ -162,9 +217,9 @@
                     
                     let buttonsHtml = '';
                     
-                    // Max retry attempts is 4
-                    if (retryCount >= 4) {
-                        // Only show refresh button after 4 attempts
+                    // Max retry attempts is 3 (since we changed it in app.py)
+                    if (retryCount >= 3) {
+                        // Only show refresh button after 3 attempts
                         buttonsHtml = `
                             <div class="text-center">
                                 <button onclick="refreshPage()" class="btn btn-warning mt-2">Refresh Page</button>
@@ -233,7 +288,8 @@
             overlay.style.alignItems = 'center';
             overlay.style.zIndex = '1000';
             
-            let secondsLeft = 5;
+            // Changed from 5 to 4 seconds
+            let secondsLeft = 4;
             overlay.innerHTML = `
                 <div class="text-center text-white">
                     <h3>Refreshing session...</h3>
@@ -260,6 +316,9 @@
             }, 1000);
             
             function performRefresh() {
+                // Set a flag in sessionStorage to indicate page is refreshing
+                sessionStorage.setItem('justRefreshed', 'true');
+                
                 // If we have a session ID, terminate it first
                 if (currentSessionId) {
                     const formData = new FormData();
